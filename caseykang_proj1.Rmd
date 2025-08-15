@@ -1,0 +1,274 @@
+---
+title: "Predicting Awarded Money in Civil Courts"
+author:
+- Casey Kang
+- caseykan
+date: "Due Monday, March July 14, at 11:59PM"
+output:
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+  html_document:
+    code_folding: show
+    theme: cosmo
+    toc: yes
+    toc_float: yes
+---
+
+```{r, include=FALSE}
+###########################
+# STYLE EDITS: IGNORE THIS
+###########################
+knitr::opts_chunk$set(message = FALSE) # include this if you don't want markdown to knit messages
+knitr::opts_chunk$set(warning = FALSE) # include this if you don't want markdown to knit warnings
+knitr::opts_chunk$set(echo = TRUE) # set echo=FALSE to hide code from html output
+```
+
+
+```{r, echo = FALSE}
+
+library("knitr")
+library("kableExtra")
+library("pander")
+library("readr")
+library("magrittr")
+library("car")
+library("interactions")
+library("leaps")
+
+```
+
+```{r, echo=FALSE}
+
+# TO BEGIN:
+# 
+# 1) Read the "project1-instructions" on 
+#    Canvas->Files->project-materials->project1-materials:
+# https://canvas.cmu.edu/files/12917494/download?download_frd=1
+# 
+# 2) Load the packages by running the previous chunk.
+#
+# 3) To load the possible datasets, run the following:
+
+bikes <- readr::read_csv("bikes.csv")
+court <- readr::read_csv("court.csv")
+nyc <- readr::read_csv("nyc.csv")
+social <- readr::read_csv("social.csv")
+
+# 4) Read the corresponding data descriptions
+#    in the "data-story-prompts" folder on: 
+#    Canvas->files->project-materials->project1-materials:
+# https://canvas.cmu.edu/courses/47951/files/folder/project-materials/project1-materials/data-story-prompts
+
+```
+
+# Introduction
+Civil court cases can cause big financial change when plaintiffs are awarded monetary damages, which are influenced by factors such as requested amount, trial length, and the claim type Understanding what influences these award amounts can help legal professionals set expectations and prepare more effectively for trial.
+
+This project will analyze a dataset of civil trial cases from 2001 to determine if specific factors — like the requested amount, the trial duration, and the type of claim — are associated with true awarded amount.
+
+
+# Exploratory Data Analysis
+**Data**
+The court case data is a sample of civil court trials from 2001 across 46 US juries. Each row in the dataset stands for one case, and there are four variables of focus to predict the monetary amount awarded. The variables in this project include:
+**TOTDAM**: Total amount/damages paid to the plaintiff (in dollar amounts)
+**DEMANDED**: Monetary amount initially requested (in dollars)
+**TRIDAYS**: The duration of the trial (in days)
+**CLAIMTYPE**: The type of claim made by plaintiff (Motor Vehicle, Premises Liability, Malpractice, Fraud, Rental/Lease, Other)
+
+Here's the first few lines of the data:
+```{r, echo = FALSE}
+head(court)
+```
+\vspace{12pt}
+
+# Univariate Exploration
+
+The first step is to examine each variable individually through histograms (for numeric variables) and a barplot (for the categorical variable).
+
+```{r, echo = FALSE}
+#True awarded amounts
+hist(court$TOTDAM,
+     main = "Total Damages Awarded",
+     xlab = "Damages Awarded (in dollars)",
+     breaks = 30)
+```
+
+\vspace{12pt}
+```{r, echo = FALSE}
+#Demanded damages
+hist(court$DEMANDED,
+     main = "Amount Demanded",
+     xlab = "Amount Demanded (in dollars)",
+     breaks = 10)
+```
+
+\vspace{12pt}
+```{r, echo = FALSE}
+#Trial duration
+hist(court$TRIDAYS,
+     main = "Trial Duration",
+     xlab = "Number of Trial Days",
+     breaks = 15)
+```
+
+\vspace{12pt}
+```{r, echo = FALSE}
+#Claim type
+barplot(table(court$CLAIMTYPE),
+        main = "Type of Claim",
+        xlab = "Claim Type",
+        ylab = "Count",
+        names.arg = c("Motor", "Premises", "Malpractice", "Fraud", "Rental", "Other"))
+
+
+```
+\newpage
+Furthermore, I added numerical summaries to supplement the univariate graphical summaries above:
+
+Summary of total damages awarded (dollars):
+```{r, echo = FALSE}
+summary(court$TOTDAM)
+```
+
+Summary of demanded damages (dollars):
+```{r, echo = FALSE}
+summary(court$DEMANDED)
+```
+
+Summary of trial length (days):
+```{r, echo = FALSE}
+summary(court$TRIDAYS)
+```
+
+Table of claim types:
+```{r, echo = FALSE}
+table(court$CLAIMTYPE)
+```
+
+The **total damages** shows a heavy right skew, with most cases having awards close to zero, but with a few reaching higher amounts.
+
+The **demanded** is similar to the total damages histogram, having a heavy right skew. The similarity makes logical sense, as there's a good chance that demanded amount and true awarded amount are similar in number.
+
+The **trial length** also skewed right. The majority of the sample was under 10 days, but some exceed 20. 
+
+The **claimtype** variable uneven/not uniform, with certain types of liability, such as motor and other, being more frequent.
+
+# Bivariate Exploration
+
+Upon examining variables individually, I'm going to inspect the relationship between predictors and the true/total damages awarded(TOTDAM).
+
+\vspace{12pt}
+
+```{r, echo = FALSE}
+# TOTDAM vs DEMANDED
+plot(court$DEMANDED, court$TOTDAM,
+     main = "Award vs Demand",
+     xlab = "Amount Demanded (dollars)",
+     ylab = "Amount Awarded (dollars)")
+```
+\vspace{12pt}
+```{r, echo = FALSE}
+# TOTDAM vs TRIDAYS
+plot(court$TRIDAYS, court$TOTDAM,
+     main = "Award vs Trial Days",
+     xlab = "Trial Days",
+     ylab = "Amount Awarded (dollars)")
+```
+\vspace{12pt}
+```{r, echo = FALSE}
+# TOTDAM by CLAIMTYPE
+boxplot(TOTDAM ~ factor(CLAIMTYPE), data = court,
+        main = "Award by Claim Type",
+        xlab = "Claim Type",
+        ylab = "Amount Awarded (dollars)",
+        names = c("Motor", "Premises", "Malpractice", "Fraud", "Rental", "Other"))
+
+```
+
+In the **Award vs Demand** scatterplot, there is a slightly positive, non-linear relationship, although often times the same demands have significantly different amount awarded. For example, at 0e+00 as the Amount Demanded, the amount awarded varies between 0 and 150000 dollars. The rightmost point, at 1e+07 for amount demanded, has one of the highest amount rewarded, which can be interpreted as support for a positive relationship between amount demanded and awarded. Due to the significant amount of points upon a vertical line at 0e+00, it's unclear whether the plot has a linear association or not. 
+
+Awards don't seem to be affected by **Trial days**, the plot had a weak association. Longer trials don't really lead to larger awards. For example, the rightmost point in the "Award vs Trial Days" scatterplot was awarded the same amount as many individuals that had less than 5 trial days. There isn't any significant trend.
+
+In the **Award by Claim Type** boxplot, different claim types are associated with different award levels. The spread, median, and outliers varied significantly between each boxplot. Premises liability and motor cases have the highest medians, but other variables, such as fraud, have higher spread in awarded amount. This heavy variation between each claim type should support it being a categorical predictor in the regression model. 
+
+\newpage
+
+# Modeling
+After inspecting the relationship between various predictors and the response variable, I move on to building a linear regression model to explain and attempt to predict the response variable (TOTDAM). From a previous histogram, TOTDAM was heavily right-skewed, signifying the rare occurrence of large awards. Since there's an uneven spread, I will apply a log transformation to stabilize the variance. All three predictor variables showed a relationship with TOTDAM during, so they’re worth including. It's also critical to check for multicollinearity and model assumptions using residual plots and Q-Q plots to ensure regression conditions are satisfied.
+
+First, make a histogram of the natural logarithm of TOTDAM to check improvements in symmetry.
+
+\vspace{12pt}
+
+```{r, echo = FALSE}
+hist(log(court$TOTDAM),
+     main = "Logarithm of Total Damages",
+     xlab = "Natural Logarithm of Total Damages",
+     ylab = "Count")
+```
+
+Now, I make the linear model:
+```{r, echo = FALSE}
+model <- lm(log(TOTDAM) ~ DEMANDED + TRIDAYS + CLAIMTYPE, data = court)
+```
+
+Now, use VIF to check if there is significant interaction between the predictor variables: 
+```{r, echo = FALSE}
+vif(model)
+```
+
+Since all of the VIF's are below 2.5, multicollinearity is not an issue.
+
+Moving onto checking significance:
+```{r, echo = FALSE}
+summary(model)
+```
+Despite the p-values exceeding the significance level of 0.05 in various CLAIMTYPE "factors", they must be kept due to the client's request to predict a malpractice case.
+
+Now, I check for normality with the Q-Q plot:
+
+```{r, echo = FALSE}
+plot(model, which=2)
+```
+
+Since the majority of the residuals falls upon the diagonal line with minimal deviation, the residuals are approximately normal.
+\newpage
+Next, to test for equal variance and linearity, I use a Residuals vs Fitted plot:
+
+```{r, echo = FALSE}
+plot(model, which=1)
+```
+
+Since residuals look fairly scattered around 0 across the fitted values, the linearity assumption is supported. Furthermore, the relatively even spread of points from 0 displays equal variance to be satisfied.
+
+Given the conditions above, the summary for the linear model is below:
+```{r, echo = FALSE}
+summary(model)
+```
+The model I made was a multiple linear regression model, and it rpedicts the natural logarithm of total damages awarded in civil court cases. Seeing that the original response variable (TOTDAM) showed strong right skew, I applied a log transformation as an attempt to improve symmetry and stabilize the variance. 
+As seen by a histogram of log(TOTDAM), symmetry vastly improved, which increased the suitability of using a linear model.
+
+During the modeling process, I tested multiple assumptions. Multicollinearity was checked using VIFs- all values were well below 2.5, meaning that there's no concern regarding an overlap among predictors. I created a Residuals vs Fitted plot, which showed no clear patterns. This meant a confirmation of the linearity and equal variance assumptions. The Q-Q plot revealed minor deviation at the start and end of the data, but overall signified residual normality.
+
+The Adjusted R² of 0.212 indicates reasonable model fit given the sample size and variable amount. The F-test p-value of 8.405e-06 indicates that the predictors collectively explain meaningful variation in damage awards.
+
+A small positive coefficient, being 2.455e-07, for DEMANDED signifies that individuals demanding larger amounts are likely to receive slightly higher awards. Trial duration (TRIDAYS) has a stronger positive impact upon award amount, as it's coefficient, being 1.320e-01, is larger. It means that each additional day in trial is associated with an increase in expected log-award.n Finally, claim types have different effect upon awarded amount. For certain claim types, particularly Motor and Premises liability cases, typically lower awards are produced when compared to other claims such as Malpractice cases.
+
+\vspace{48pt}
+
+# Prediction
+Given that the client requested $150,000 in damages (DEMANDED), whose trial lasted 12 days (TRIDAYS), and whose case type was Motor (CLAIMTYPE), the predicted log damages are calculated using the coefficients from the summary of the model:
+```{r}
+10.10 + (2.455e-07 * 150000) + (0.132 * 12) - 1.348
+```
+The output value was 10.37282, but that's because the linear model made with the natural logarithm of the response variable, being total damages (TOTDAM).
+\vspace{48pt}
+
+# Discussion
+In this analysis, the damage awards were reasonably related to the amount demanded by the plaintiff, the length of the trial, and the type of claim. While requested damages showed slight but statistically significant positive effects, trial durations and the claim type had a stronger impact. The impacts of each claim type varied, with Motor and Premises claims being associated with significantly lower awards compared to Malpractice, based upon the negative coefficients and low p-values.
+
+The residuals vs fitted plot and Q-Q plot indicated that key assumptions such as including linearity, equal variance, and normality were reasonably met. Furthermore, multicollinearity was assessed with VIFs and found to be minimal, supporting the stability of the model. The R^2 value is negatively impacted with outliers within the model, which is an issue that can be addressed in more detail in future analyses. 
+
+Overall, this regression model provides an moderately interpretable and statistically significant base for understanding damage awards in civil cases within the United States. It can potentially assist courts and litigators assess how trial dynamics and claim categories relate to monetary outcomes, but there could be better models to do so, given the "mediocre" p-value. 
